@@ -1,0 +1,6 @@
+{
+  "name": "CD Media Player",
+  "description": "A minimalist CD-styled image and video showcase tool with customizable CD surface and interactive spinning animations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
