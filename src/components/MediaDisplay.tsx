@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Upload } from 'lucide-react';
 import { MediaContent } from '../types';
 
@@ -8,6 +8,7 @@ interface MediaDisplayProps {
   onTogglePlay: () => void;
   onOpenSettings: () => void;
   onMediaUpload: (file: File) => void;
+  liveVideoUrl?: string | null;
 }
 
 export const MediaDisplay: React.FC<MediaDisplayProps> = ({
@@ -16,18 +17,25 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
   onTogglePlay,
   onOpenSettings,
   onMediaUpload,
+  liveVideoUrl,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [displayUrl, setDisplayUrl] = useState(media?.url || null);
   const [displayType, setDisplayType] = useState(media?.type || 'image');
   const [displayTitle, setDisplayTitle] = useState(media?.title || '');
   const [displayOpacity, setDisplayOpacity] = useState(1);
+  const [isLivePlaying, setIsLivePlaying] = useState(false);
 
   const mediaRef = useRef(media);
   mediaRef.current = media;
+
+  // Live Photo only applies when media is image type AND liveVideoUrl exists
+  const isLivePhoto = displayType === 'image' && !!liveVideoUrl;
 
   // Smooth fade transition when media URL changes
   useEffect(() => {
@@ -45,7 +53,29 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
     return () => clearTimeout(timer);
   }, [media?.url]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync video play/pause state
+  // Auto-play Live Photo when CD switches (image + live video only)
+  useEffect(() => {
+    if (!isLivePhoto || !displayUrl) return;
+
+    const timer = setTimeout(() => {
+      setIsLivePlaying(true);
+      if (liveVideoRef.current) {
+        liveVideoRef.current.currentTime = 0;
+        liveVideoRef.current.play().catch(() => {});
+      }
+      const stopTimer = setTimeout(() => {
+        setIsLivePlaying(false);
+        if (liveVideoRef.current) {
+          liveVideoRef.current.pause();
+          liveVideoRef.current.currentTime = 0;
+        }
+      }, 2000);
+      return () => clearTimeout(stopTimer);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [displayUrl, isLivePhoto]);
+
+  // Sync video play/pause (standalone video only, not Live Photo)
   useEffect(() => {
     if (displayType !== 'video') return;
     const el = videoRef.current;
@@ -58,6 +88,19 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
     }
   }, [isPlaying, displayType]);
 
+  // Set video src after mount to avoid StrictMode double-render ERR_ABORTED
+  useEffect(() => {
+    if (displayType !== 'video' || !displayUrl) return;
+    const timer = setTimeout(() => {
+      const el = videoRef.current;
+      if (el && el.src !== displayUrl) {
+        el.src = displayUrl;
+        el.load();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [displayUrl, displayType]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onMediaUpload(file);
@@ -65,6 +108,32 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
   };
 
   const hasMedia = !!displayUrl;
+
+  // Long press handlers for Live Photo
+  const startLongPress = useCallback(() => {
+    if (!isLivePhoto) return;
+    longPressTimerRef.current = setTimeout(() => {
+      setIsLivePlaying(true);
+      if (liveVideoRef.current) {
+        liveVideoRef.current.currentTime = 0;
+        liveVideoRef.current.play().catch(() => {});
+      }
+    }, 150);
+  }, [isLivePhoto]);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (isLivePlaying) {
+      setIsLivePlaying(false);
+      if (liveVideoRef.current) {
+        liveVideoRef.current.pause();
+        liveVideoRef.current.currentTime = 0;
+      }
+    }
+  }, [isLivePlaying]);
 
   const handleContainerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -97,6 +166,12 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
 
       <div
         onClick={handleContainerClick}
+        onMouseDown={startLongPress}
+        onMouseUp={cancelLongPress}
+        onMouseLeave={cancelLongPress}
+        onTouchStart={startLongPress}
+        onTouchEnd={cancelLongPress}
+        onTouchCancel={cancelLongPress}
         className="relative left-[15px] w-full aspect-[3/4] rounded-2xl overflow-hidden bg-white/10 shadow-xl border border-white/20 transition-all duration-300 transform active:scale-[0.99] cursor-pointer group-hover:shadow-2xl flex flex-col items-center justify-center text-center"
       >
         {hasMedia ? (
@@ -105,22 +180,37 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
             style={{ opacity: displayOpacity }}
           >
             {displayType === 'video' ? (
+              /* Standalone video - no Live Photo overlay */
               <video
-                key={displayUrl}
                 ref={videoRef}
-                src={displayUrl}
                 loop
                 playsInline
                 muted
                 className="w-full h-full object-cover select-none pointer-events-none"
               />
             ) : (
-              <img
-                src={displayUrl}
-                alt={displayTitle || 'Display Media'}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover select-none transition-transform duration-700 ease-out group-hover:scale-105 pointer-events-none"
-              />
+              /* Image (possibly with Live Photo overlay) */
+              <>
+                <img
+                  src={displayUrl}
+                  alt={displayTitle || 'Display Media'}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover select-none transition-transform duration-700 ease-out group-hover:scale-105 pointer-events-none"
+                />
+                {/* Live Photo video overlay */}
+                {isLivePhoto && (
+                  <video
+                    ref={liveVideoRef}
+                    src={liveVideoUrl!}
+                    loop
+                    playsInline
+                    muted
+                    className={`absolute inset-0 w-full h-full object-cover select-none pointer-events-none transition-opacity duration-150 ${
+                      isLivePlaying ? 'opacity-100' : 'opacity-0'
+                    }`}
+                  />
+                )}
+              </>
             )}
 
             {/* Gradient Overlay */}
@@ -132,6 +222,16 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
                 <p className="text-white/90 text-xs font-light tracking-wider truncate drop-shadow-sm">
                   {displayTitle}
                 </p>
+              </div>
+            )}
+
+            {/* LIVE indicator */}
+            {isLivePhoto && !isLivePlaying && (
+              <div className="absolute top-3 right-3 z-10 pointer-events-none">
+                <div className="bg-black/40 backdrop-blur-sm rounded-full px-2 py-0.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                  <span className="text-[9px] text-white/80 font-medium">LIVE</span>
+                </div>
               </div>
             )}
           </div>

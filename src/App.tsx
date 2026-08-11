@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { MediaDisplay } from './components/MediaDisplay';
 import { CDPlayer } from './components/CDPlayer';
 import { SettingsModal } from './components/SettingsModal';
@@ -40,22 +40,6 @@ export default function App() {
   const [activeCdId, setActiveCdId] = useState<string>('cd-1');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
-  // Track pending blob URL revocations (delayed until after fade transition)
-  const pendingRevocations = useRef<string[]>([]);
-
-  // Process pending blob URL revocations after a delay
-  useEffect(() => {
-    if (pendingRevocations.current.length === 0) return;
-    const urls = [...pendingRevocations.current];
-    pendingRevocations.current = [];
-    const timer = setTimeout(() => {
-      urls.forEach((url) => {
-        try { URL.revokeObjectURL(url); } catch {}
-      });
-    }, 500); // Wait for fade transition to complete
-    return () => clearTimeout(timer);
-  }, [cdList]); // Trigger when cdList changes
-
   // Active CD object
   const activeCd = cdList.find((item) => item.id === activeCdId) || cdList[0] || {
     id: 'default',
@@ -94,13 +78,6 @@ export default function App() {
   // Delete CD Item
   const handleDeleteCdItem = (id: string) => {
     if (cdList.length <= 1) return;
-    const item = cdList.find((c) => c.id === id);
-    if (item) {
-      // Schedule blob URL revocation with delay
-      [item.mediaUrl, item.cdSurfaceImage, item.liveVideoUrl].forEach((url) => {
-        if (url?.startsWith('blob:')) pendingRevocations.current.push(url);
-      });
-    }
     const filtered = cdList.filter((item) => item.id !== id);
     setCdList(filtered);
     if (activeCdId === id) {
@@ -108,35 +85,18 @@ export default function App() {
     }
   };
 
-  // Update CD item with delayed blob URL cleanup
+  // Update specific CD item field
   const handleUpdateCdItem = (id: string, updated: Partial<CDItem>) => {
-    setCdList((prev) => {
-      const oldItem = prev.find((item) => item.id === id);
-      if (oldItem) {
-        // Schedule old blob URLs for delayed revocation (not immediate!)
-        const check = (oldUrl: string | null | undefined, newUrl: string | null | undefined) => {
-          if (oldUrl?.startsWith('blob:') && oldUrl !== newUrl) {
-            pendingRevocations.current.push(oldUrl);
-          }
-        };
-        check(oldItem.mediaUrl, updated.mediaUrl);
-        check(oldItem.cdSurfaceImage, updated.cdSurfaceImage);
-        check(oldItem.liveVideoUrl, updated.liveVideoUrl);
-      }
-      return prev.map((item) => (item.id === id ? { ...item, ...updated } : item));
-    });
+    setCdList((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
+    );
   };
 
   // Handle direct media upload on media display
   const handleMediaUpload = (file: File) => {
     const url = URL.createObjectURL(file);
     const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
-    // When uploading a video as media, clear any Live Photo video to avoid conflict
-    const update: Partial<CDItem> = { mediaUrl: url, mediaType };
-    if (mediaType === 'video') {
-      update.liveVideoUrl = null;
-    }
-    handleUpdateCdItem(activeCd.id, update);
+    handleUpdateCdItem(activeCd.id, { mediaUrl: url, mediaType });
   };
 
   return (
@@ -176,6 +136,7 @@ export default function App() {
             onTogglePlay={handleTogglePlay}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onMediaUpload={handleMediaUpload}
+            liveVideoUrl={activeCd.liveVideoUrl}
           />
         </section>
 
