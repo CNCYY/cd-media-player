@@ -16,9 +16,8 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
   isPlaying,
   onTogglePlay,
 }) => {
-  const [rotation, setRotation] = useState<number>(0);
-  const animFrameRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number | null>(null);
+  const cdDiscRef = useRef<HTMLDivElement | null>(null);
+  const cdRotationsRef = useRef<{[key: string]: number}>({});
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const isAutoScrolling = useRef(false);
@@ -89,38 +88,77 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
     };
   }, [cdList, activeCdId, onSelectCd]);
 
-  // Rotation animation loop for active playing CD
+  // Inject CSS keyframe animation for CD spinning
   useEffect(() => {
-    const SPEED = 144; // degrees per second
+    const style = document.createElement('style');
+    style.id = 'cd-spin-keyframes';
+    style.textContent = `
+      @keyframes cd-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
 
-    const updateRotation = (timestamp: number) => {
-      if (lastTimeRef.current !== null) {
-        const delta = (timestamp - lastTimeRef.current) / 1000;
-        setRotation((prev) => (prev + SPEED * delta) % 360);
-      }
-      lastTimeRef.current = timestamp;
-      if (isPlaying) {
-        animFrameRef.current = requestAnimationFrame(updateRotation);
-      }
-    };
+  // Control CD rotation animation via CSS
+  useEffect(() => {
+    const el = cdDiscRef.current;
+    if (!el) return;
 
     if (isPlaying) {
-      lastTimeRef.current = null;
-      animFrameRef.current = requestAnimationFrame(updateRotation);
+      // Start CSS animation from saved rotation
+      const savedRot = cdRotationsRef.current[activeCdId] || 0;
+      const delay = -((savedRot % 360) / 360) * 2.5; // 2.5s = one full rotation
+      el.style.transform = '';
+      el.style.transition = 'none';
+      el.style.animation = 'none';
+      // Force reflow to ensure animation restart
+      void el.offsetHeight;
+      el.style.animation = `cd-spin 2.5s linear infinite`;
+      el.style.animationDelay = `${delay}s`;
     } else {
-      if (animFrameRef.current !== null) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
+      // Pause: capture current rotation from animation, save as static transform
+      const cs = getComputedStyle(el);
+      const matrix = el.style.animation ? cs.transform : el.style.transform;
+      if (el.style.animation) {
+        el.style.animation = 'none';
       }
-      lastTimeRef.current = null;
-    }
 
-    return () => {
-      if (animFrameRef.current !== null) {
-        cancelAnimationFrame(animFrameRef.current);
+      let angle = 0;
+      if (matrix && matrix !== 'none') {
+        const match = matrix.match(/matrix\(([^)]+)\)/);
+        if (match) {
+          const parts = match[1].split(', ');
+          const a = parseFloat(parts[0]);
+          const b = parseFloat(parts[1]);
+          angle = Math.atan2(b, a) * (180 / Math.PI);
+          if (angle < 0) angle += 360;
+        }
       }
-    };
-  }, [isPlaying]);
+      cdRotationsRef.current[activeCdId] = angle;
+      el.style.transform = `rotate(${angle}deg)`;
+      el.style.transition = 'transform 0.5s ease-out';
+      el.style.animationDelay = '';
+    }
+  }, [isPlaying, activeCdId]);
+
+  // Re-trigger animation when CD becomes active while playing
+  // (ensures ref is ready after React render)
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = requestAnimationFrame(() => {
+      const el = cdDiscRef.current;
+      if (!el || el.style.animation) return;
+      const savedRot = cdRotationsRef.current[activeCdId] || 0;
+      const delay = -((savedRot % 360) / 360) * 2.5;
+      void el.offsetHeight;
+      el.style.animation = `cd-spin 2.5s linear infinite`;
+      el.style.animationDelay = `${delay}s`;
+    });
+    return () => cancelAnimationFrame(timer);
+  }, [activeCdId, isPlaying]);
 
   // Tonearm position - set once on mount, never moves
   const [tonearmPos, setTonearmPos] = useState({ top: 0, left: 0 });
@@ -172,13 +210,11 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
             >
               {/* CD Disc Body */}
               <div
+                ref={isActive ? cdDiscRef : null}
                 className={`relative rounded-full shadow-xl overflow-hidden border border-neutral-200/80 transition-all duration-300 ${
                   isActive ? 'w-52 h-52 sm:w-60 sm:h-60' : 'w-40 h-40 sm:w-44 sm:h-44'
                 }`}
-                style={{
-                  transform: isActive ? `rotate(${rotation}deg)` : 'none',
-                  transition: isActive && isPlaying ? 'none' : 'transform 0.5s ease-out',
-                }}
+                style={isActive ? undefined : { animation: 'none', transform: `rotate(${cdRotationsRef.current[cd.id] || 0}deg)` }}
               >
                 {/* Outer Rim Gloss */}
                 <div className="absolute inset-0 rounded-full border-[1.5px] border-neutral-300/60 z-20 pointer-events-none" />

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { X, Plus, Trash2, Upload, Disc, Check, Video } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Disc, Check } from 'lucide-react';
 import { CDItem } from '../types';
 
 interface SettingsModalProps {
@@ -25,7 +25,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const cdCoverInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const mediaInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
-  const liveVideoInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   if (!isOpen) return null;
 
@@ -38,11 +37,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const url = URL.createObjectURL(file);
     const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
     onUpdateCdItem(id, { mediaUrl: url, mediaType });
-  };
-
-  const handleLiveVideoUpload = (id: string, file: File) => {
-    const url = URL.createObjectURL(file);
-    onUpdateCdItem(id, { liveVideoUrl: url });
   };
 
   return (
@@ -146,31 +140,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-medium">
                       更换
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="file"
-                      accept="video/*"
-                      className="hidden"
-                      ref={(el) => (liveVideoInputRefs.current[item.id] = el)}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleLiveVideoUpload(item.id, file);
-                        e.target.value = '';
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => liveVideoInputRefs.current[item.id]?.click()}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
-                        item.liveVideoUrl
-                          ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                          : 'bg-neutral-100 text-neutral-500 border border-neutral-300 hover:bg-neutral-200'
-                      }`}
-                    >
-                      <Video className="w-3 h-3" />
-                      {item.liveVideoUrl ? 'Live ✓' : 'Live +'}
-                    </button>
                   </div>
                   <input
                     type="text"
