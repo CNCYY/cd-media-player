@@ -21,6 +21,10 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const isAutoScrolling = useRef(false);
+  const onSelectCdRef = useRef(onSelectCd);
+  const activeCdIdRef = useRef(activeCdId);
+  onSelectCdRef.current = onSelectCd;
+  activeCdIdRef.current = activeCdId;
 
   // Scroll the active CD into centered view when activeCdId changes (e.g. init, settings)
   useEffect(() => {
@@ -33,9 +37,13 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
 
     const timer = setTimeout(() => {
       isAutoScrolling.current = false;
-    }, 500);
+    }, 400);
     return () => clearTimeout(timer);
   }, [activeCdId]);
+
+  // Stored refs for scroll handler to avoid effect re-runs
+  const cdListRef = useRef(cdList);
+  cdListRef.current = cdList;
 
   // Detect which CD is closest to the center while user scrolls
   const [pendingCdId, setPendingCdId] = useState<string | null>(null);
@@ -52,10 +60,10 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         const center = container.scrollLeft + container.clientWidth / 2;
-        let closestId = activeCdId;
+        let closestId = activeCdIdRef.current;
         let minDistance = Infinity;
 
-        cdList.forEach((cd) => {
+        cdListRef.current.forEach((cd) => {
           const el = itemRefs.current[cd.id];
           if (!el) return;
           const elCenter = el.offsetLeft + el.offsetWidth / 2;
@@ -66,18 +74,17 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
           }
         });
 
-        // Set pending CD for smooth transition
-        if (closestId !== activeCdId) {
+        if (closestId !== activeCdIdRef.current) {
           setPendingCdId(closestId);
           if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
           pendingTimerRef.current = setTimeout(() => {
-            onSelectCd(closestId);
+            onSelectCdRef.current(closestId);
             setPendingCdId(null);
-          }, 350);
+          }, 150);
         } else {
           setPendingCdId(null);
         }
-      }, 200);
+      }, 80);
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
@@ -86,7 +93,7 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
       clearTimeout(timeoutId);
       if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     };
-  }, [cdList, activeCdId, onSelectCd]);
+  }, []); // Stable – uses refs internally
 
   // Inject CSS keyframe animation for CD spinning
   useEffect(() => {
@@ -200,7 +207,7 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
                   onSelectCd(cd.id);
                 }
               }}
-              className={`relative flex-shrink-0 cursor-pointer snap-center transition-all duration-500 ease-out ${
+              className={`relative flex-shrink-0 cursor-pointer snap-center transition-all duration-300 ease-out ${
                 isActive
                   ? 'scale-100 z-10'
                   : isPending

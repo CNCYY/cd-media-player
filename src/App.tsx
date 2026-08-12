@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { MediaDisplay } from './components/MediaDisplay';
 import { CDPlayer } from './components/CDPlayer';
 import { SettingsModal } from './components/SettingsModal';
 import { CDItem } from './types';
 import { ambientSynth } from './utils/audioSynth';
+import { MediaContent } from './types';
 
 // Generated Asset Imports
 import cdDisplaySample from './assets/images/cd_display_sample_1786179914334.jpg';
@@ -50,30 +51,32 @@ export default function App() {
   };
 
   // Play / Pause Toggle Handler
-  const handleTogglePlay = () => {
-    const nextState = !isPlaying;
-    setIsPlaying(nextState);
-    // Only use ambient synth for non-video media (images or no media)
-    if (activeCd.mediaType !== 'video') {
-      ambientSynth.toggle(nextState);
-    }
-  };
+  const handleTogglePlay = useCallback(() => {
+    setIsPlaying((prev) => {
+      const next = !prev;
+      if (activeCd.mediaType !== 'video') {
+        ambientSynth.toggle(next);
+      }
+      return next;
+    });
+  }, [activeCd.mediaType]);
 
   // Switch Active CD
-  const handleSelectActiveCd = (id: string) => {
-    // Stop ambient synth if switching to a video CD
+  const handleSelectActiveCd = useCallback((id: string) => {
     const targetCd = cdList.find((item) => item.id === id);
-    if (targetCd?.mediaType === 'video') {
-      ambientSynth.pause();
-    } else if (isPlaying) {
-      // Start ambient synth if switching to image CD while playing
-      ambientSynth.play();
-    }
+    setIsPlaying((prev) => {
+      if (targetCd?.mediaType === 'video') {
+        ambientSynth.pause();
+      } else if (prev) {
+        ambientSynth.play();
+      }
+      return prev;
+    });
     setActiveCdId(id);
-  };
+  }, [cdList]);
 
   // Add new CD Item
-  const handleAddCdItem = () => {
+  const handleAddCdItem = useCallback(() => {
     const newId = `cd-${Date.now()}`;
     const newCd: CDItem = {
       id: newId,
@@ -84,31 +87,46 @@ export default function App() {
     };
     setCdList((prev) => [...prev, newCd]);
     setActiveCdId(newId);
-  };
+  }, [cdList.length]);
 
   // Delete CD Item
-  const handleDeleteCdItem = (id: string) => {
-    if (cdList.length <= 1) return;
-    const filtered = cdList.filter((item) => item.id !== id);
-    setCdList(filtered);
-    if (activeCdId === id) {
-      setActiveCdId(filtered[0].id);
-    }
-  };
+  const handleDeleteCdItem = useCallback((id: string) => {
+    setCdList((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((item) => item.id !== id);
+    });
+    setActiveCdId((prev) => {
+      if (prev === id) {
+        const filtered = cdList.filter((item) => item.id !== id);
+        return filtered[0]?.id || prev;
+      }
+      return prev;
+    });
+  }, [cdList]);
 
   // Update specific CD item field
-  const handleUpdateCdItem = (id: string, updated: Partial<CDItem>) => {
+  const handleUpdateCdItem = useCallback((id: string, updated: Partial<CDItem>) => {
     setCdList((prev) =>
       prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
     );
-  };
+  }, []);
 
   // Handle direct media upload on media display
-  const handleMediaUpload = (file: File) => {
+  const handleMediaUpload = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
     const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
     handleUpdateCdItem(activeCd.id, { mediaUrl: url, mediaType });
-  };
+  }, [activeCd.id, handleUpdateCdItem]);
+
+  // Memoized media prop for MediaDisplay
+  const mediaContent: MediaContent | null = useMemo(() => {
+    if (!activeCd.mediaUrl) return null;
+    return {
+      type: activeCd.mediaType,
+      url: activeCd.mediaUrl,
+      title: activeCd.cdText,
+    };
+  }, [activeCd.mediaUrl, activeCd.mediaType, activeCd.cdText]);
 
   return (
     <div className="min-h-screen w-full text-neutral-800 flex flex-col justify-start items-center py-6 px-4 font-sans select-none overflow-y-auto pb-12 relative">
@@ -134,15 +152,7 @@ export default function App() {
         {/* TOP SECTION: Image / Video Display Area (3:4 ratio) */}
         <section className="w-full relative z-0">
           <MediaDisplay
-            media={
-              activeCd.mediaUrl
-                ? {
-                    type: activeCd.mediaType,
-                    url: activeCd.mediaUrl,
-                    title: activeCd.cdText,
-                  }
-                : null
-            }
+            media={mediaContent}
             isPlaying={isPlaying}
             onTogglePlay={handleTogglePlay}
             onOpenSettings={() => setIsSettingsOpen(true)}

@@ -49,7 +49,7 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
       setDisplayType(m?.type || 'image');
       setDisplayTitle(m?.title || '');
       setDisplayOpacity(1);
-    }, 200);
+    }, 100);
     return () => clearTimeout(timer);
   }, [media?.url]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -176,7 +176,7 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
       >
         {hasMedia ? (
           <div
-            className="relative w-full h-full transition-opacity duration-200"
+            className="relative w-full h-full transition-opacity duration-150"
             style={{ opacity: displayOpacity }}
           >
             {displayType === 'video' ? (
