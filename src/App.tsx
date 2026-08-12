@@ -53,11 +53,22 @@ export default function App() {
   const handleTogglePlay = () => {
     const nextState = !isPlaying;
     setIsPlaying(nextState);
-    ambientSynth.toggle(nextState);
+    // Only use ambient synth for non-video media (images or no media)
+    if (activeCd.mediaType !== 'video') {
+      ambientSynth.toggle(nextState);
+    }
   };
 
   // Switch Active CD
   const handleSelectActiveCd = (id: string) => {
+    // Stop ambient synth if switching to a video CD
+    const targetCd = cdList.find((item) => item.id === id);
+    if (targetCd?.mediaType === 'video') {
+      ambientSynth.pause();
+    } else if (isPlaying) {
+      // Start ambient synth if switching to image CD while playing
+      ambientSynth.play();
+    }
     setActiveCdId(id);
   };
 

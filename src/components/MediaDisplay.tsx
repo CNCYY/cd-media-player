@@ -185,7 +185,6 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
                 ref={videoRef}
                 loop
                 playsInline
-                muted
                 className="w-full h-full object-cover select-none pointer-events-none"
               />
             ) : (
