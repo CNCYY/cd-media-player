@@ -313,8 +313,8 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
                 </div>
 
                 {/* CD Label Text */}
-                <div className="absolute top-6 sm:top-8 left-0 right-0 text-center z-20 pointer-events-none px-3">
-                  <p className="text-[10px] font-semibold tracking-widest text-white uppercase truncate drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                <div className="absolute top-6 sm:top-8 left-0 right-0 text-center z-20 pointer-events-none px-[22px]">
+                  <p className="text-[10px] font-semibold tracking-widest text-white uppercase leading-snug whitespace-normal break-words drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
                     {cd.cdText || 'COMPACT DISC'}
                   </p>
                 </div>
