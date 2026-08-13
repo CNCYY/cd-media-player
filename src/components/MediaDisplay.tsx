@@ -183,7 +183,7 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
         onTouchStart={startLongPress}
         onTouchEnd={cancelLongPress}
         onTouchCancel={cancelLongPress}
-        className="relative left-[15px] w-full aspect-[3/4] rounded-2xl overflow-hidden bg-white/10 shadow-xl border border-white/20 transition-all duration-300 transform active:scale-[0.99] cursor-pointer group-hover:shadow-2xl flex flex-col items-center justify-center text-center"
+        className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden bg-white/10 shadow-xl border border-white/20 transition-all duration-300 transform active:scale-[0.99] cursor-pointer group-hover:shadow-2xl flex flex-col items-center justify-center text-center"
       >
         {hasMedia ? (
           <div
