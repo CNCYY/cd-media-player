@@ -88,7 +88,18 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
     }
   }, [isPlaying, displayType]);
 
-  // Set video src after mount to avoid StrictMode double-render ERR_ABORTED
+  // Set Live Photo video src after mount to avoid StrictMode ERR_ABORTED
+  useEffect(() => {
+    if (!isLivePhoto || !liveVideoUrl) return;
+    const timer = setTimeout(() => {
+      const el = liveVideoRef.current;
+      if (el && el.src !== liveVideoUrl) {
+        el.src = liveVideoUrl;
+        el.load();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [liveVideoUrl, isLivePhoto]);
   useEffect(() => {
     if (displayType !== 'video' || !displayUrl) return;
     const timer = setTimeout(() => {
@@ -200,7 +211,6 @@ export const MediaDisplay: React.FC<MediaDisplayProps> = ({
                 {isLivePhoto && (
                   <video
                     ref={liveVideoRef}
-                    src={liveVideoUrl!}
                     loop
                     playsInline
                     muted

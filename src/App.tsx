@@ -129,7 +129,7 @@ export default function App() {
   }, [activeCd.mediaUrl, activeCd.mediaType, activeCd.cdText]);
 
   return (
-    <div className="min-h-screen w-full text-neutral-800 flex flex-col justify-start items-center py-6 px-4 font-sans select-none overflow-y-auto pb-12 relative">
+    <div className="min-h-screen w-full text-neutral-800 flex flex-col justify-center items-center py-6 px-4 font-sans select-none overflow-hidden relative">
 
       {/* Background image fills the page from the current media */}
       {activeCd.mediaUrl && activeCd.mediaType === 'image' ? (
@@ -146,31 +146,74 @@ export default function App() {
         <div className="fixed inset-0 z-[-1] bg-[#F4F4F2]" />
       )}
 
-      {/* Main Container */}
-      <div className="w-full max-w-sm flex flex-col justify-start items-center my-auto py-2">
-
-        {/* TOP SECTION: Image / Video Display Area (3:4 ratio) */}
-        <section className="w-full relative z-0">
-          <MediaDisplay
-            media={mediaContent}
-            isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlay}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            onMediaUpload={handleMediaUpload}
-            liveVideoUrl={activeCd.liveVideoUrl}
+      {/* Y2K Metallic Shell */}
+      <div className="w-full max-w-sm my-auto py-2">
+        <div
+          className="relative rounded-[2rem] p-4 sm:p-5 overflow-hidden"
+          style={{
+            background: `linear-gradient(145deg, 
+              #e8e8e8 0%, 
+              #f5f5f5 5%, 
+              #e0e0e0 10%,
+              #c0c0c0 20%,
+              #d4d4d4 30%,
+              #b8b8b8 45%,
+              #d0d0d0 55%,
+              #a8a8a8 70%,
+              #c8c8c8 80%,
+              #e0e0e0 90%,
+              #f0f0f0 95%,
+              #d8d8d8 100%)`,
+            boxShadow: `
+              inset 0 1px 0 rgba(255,255,255,0.6),
+              inset 0 -2px 4px rgba(0,0,0,0.15),
+              inset 2px 0 4px rgba(0,0,0,0.08),
+              inset -2px 0 4px rgba(0,0,0,0.08),
+              0 8px 32px rgba(0,0,0,0.3),
+              0 2px 8px rgba(0,0,0,0.2),
+              0 0 0 4px rgba(180,180,180,0.4),
+              0 0 0 6px rgba(160,160,160,0.2)
+            `,
+            border: '2px solid rgba(255,255,255,0.3)',
+          }}
+        >
+          {/* Inner rim highlight */}
+          <div className="absolute inset-2 rounded-[1.75rem] pointer-events-none"
+            style={{
+              boxShadow: `
+                inset 0 0 20px rgba(0,0,0,0.15),
+                inset 0 1px 2px rgba(255,255,255,0.4)
+              `,
+            }}
           />
-        </section>
 
-        {/* BOTTOM SECTION: CD Discs directly arranged horizontally */}
-        <section className="w-full relative z-10 -mt-20 sm:-mt-24">
-          <CDPlayer
-            cdList={cdList}
-            activeCdId={activeCd.id}
-            onSelectCd={handleSelectActiveCd}
-            isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlay}
-          />
-        </section>
+          {/* Main Container */}
+          <div className="w-full flex flex-col justify-start items-center relative z-0">
+
+            {/* TOP SECTION: Image / Video Display Area (3:4 ratio) */}
+            <section className="w-full relative z-0">
+              <MediaDisplay
+                media={mediaContent}
+                isPlaying={isPlaying}
+                onTogglePlay={handleTogglePlay}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+                onMediaUpload={handleMediaUpload}
+                liveVideoUrl={activeCd.liveVideoUrl}
+              />
+            </section>
+
+            {/* BOTTOM SECTION: CD Discs directly arranged horizontally */}
+            <section className="w-full relative z-10 -mt-20 sm:-mt-24">
+              <CDPlayer
+                cdList={cdList}
+                activeCdId={activeCd.id}
+                onSelectCd={handleSelectActiveCd}
+                isPlaying={isPlaying}
+                onTogglePlay={handleTogglePlay}
+              />
+            </section>
+          </div>
+        </div>
       </div>
 
       {/* Settings Modal */}

@@ -1,5 +1,77 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { CDItem } from '../types';
+
+// Generate a cassette sliding-into-deck click sound
+const playClickSound = () => {
+  try {
+    const ctx = new AudioContext();
+    ctx.resume();
+
+    // Wait for context to be ready, then play
+    const play = () => {
+      const now = ctx.currentTime;
+
+      // Cassette slide: filtered noise with higher volume
+      const slideDuration = 0.15;
+      const bufferSize = Math.floor(ctx.sampleRate * slideDuration);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        const t = i / bufferSize;
+        data[i] = (Math.random() * 2 - 1) * (1 - t);
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const bpFilter = ctx.createBiquadFilter();
+      bpFilter.type = 'bandpass';
+      bpFilter.frequency.value = 3000;
+      bpFilter.Q.value = 0.8;
+
+      const slideGain = ctx.createGain();
+      slideGain.gain.setValueAtTime(0.6, now);
+      slideGain.gain.exponentialRampToValueAtTime(0.001, now + slideDuration);
+
+      noise.connect(bpFilter).connect(slideGain).connect(ctx.destination);
+      noise.start(now);
+
+      // Two clear clicks
+      const makeClick = (delay: number, freq: number, vol: number) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, now + delay);
+        osc.frequency.exponentialRampToValueAtTime(80, now + delay + 0.04);
+        g.gain.setValueAtTime(vol, now + delay);
+        g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.06);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.06);
+      };
+
+      makeClick(0.08, 600, 0.5);
+      makeClick(0.14, 400, 0.4);
+
+      setTimeout(() => ctx.close(), 400);
+    };
+
+    // If already running, play immediately; otherwise wait for resume
+    if (ctx.state === 'running') {
+      play();
+    } else {
+      ctx.onstatechange = () => {
+        if (ctx.state === 'running') {
+          ctx.onstatechange = null;
+          play();
+        }
+      };
+    }
+  } catch {
+    // Audio not available, silently ignore
+  }
+};
 
 interface CDPlayerProps {
   cdList: CDItem[];
@@ -18,82 +90,26 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
 }) => {
   const cdDiscRef = useRef<HTMLDivElement | null>(null);
   const cdRotationsRef = useRef<{[key: string]: number}>({});
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-  const isAutoScrolling = useRef(false);
-  const onSelectCdRef = useRef(onSelectCd);
-  const activeCdIdRef = useRef(activeCdId);
-  onSelectCdRef.current = onSelectCd;
-  activeCdIdRef.current = activeCdId;
+  const cdContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll the active CD into centered view when activeCdId changes (e.g. init, settings)
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    const activeEl = itemRefs.current[activeCdId];
-    if (!container || !activeEl) return;
+  const activeIndex = cdList.findIndex((cd) => cd.id === activeCdId);
+  const activeCd = cdList[activeIndex] || cdList[0];
+  const hasPrev = activeIndex > 0;
+  const hasNext = activeIndex < cdList.length - 1;
 
-    isAutoScrolling.current = true;
-    activeEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  const handlePrev = useCallback(() => {
+    if (hasPrev) {
+      playClickSound();
+      onSelectCd(cdList[activeIndex - 1].id);
+    }
+  }, [hasPrev, activeIndex, cdList, onSelectCd]);
 
-    const timer = setTimeout(() => {
-      isAutoScrolling.current = false;
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [activeCdId]);
-
-  // Stored refs for scroll handler to avoid effect re-runs
-  const cdListRef = useRef(cdList);
-  cdListRef.current = cdList;
-
-  // Detect which CD is closest to the center while user scrolls
-  const [pendingCdId, setPendingCdId] = useState<string | null>(null);
-  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const handleScroll = () => {
-      if (isAutoScrolling.current) return;
-
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        const center = container.scrollLeft + container.clientWidth / 2;
-        let closestId = activeCdIdRef.current;
-        let minDistance = Infinity;
-
-        cdListRef.current.forEach((cd) => {
-          const el = itemRefs.current[cd.id];
-          if (!el) return;
-          const elCenter = el.offsetLeft + el.offsetWidth / 2;
-          const distance = Math.abs(center - elCenter);
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestId = cd.id;
-          }
-        });
-
-        if (closestId !== activeCdIdRef.current) {
-          setPendingCdId(closestId);
-          if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
-          pendingTimerRef.current = setTimeout(() => {
-            onSelectCdRef.current(closestId);
-            setPendingCdId(null);
-          }, 150);
-        } else {
-          setPendingCdId(null);
-        }
-      }, 80);
-    };
-
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      container.removeEventListener('scroll', handleScroll);
-      clearTimeout(timeoutId);
-      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
-    };
-  }, []); // Stable – uses refs internally
+  const handleNext = useCallback(() => {
+    if (hasNext) {
+      playClickSound();
+      onSelectCd(cdList[activeIndex + 1].id);
+    }
+  }, [hasNext, activeIndex, cdList, onSelectCd]);
 
   // Inject CSS keyframe animation for CD spinning
   useEffect(() => {
@@ -167,181 +183,157 @@ export const CDPlayer: React.FC<CDPlayerProps> = ({
     return () => cancelAnimationFrame(timer);
   }, [activeCdId, isPlaying]);
 
-  // Tonearm position - set once on mount, never moves
-  const [tonearmPos, setTonearmPos] = useState({ top: 0, left: 0 });
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const el = itemRefs.current[activeCdId];
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      setTonearmPos({
-        top: rect.top - 8,
-        left: rect.right + 4,
-      });
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
+  const cd = activeCd;
 
   return (
     <div className="w-full select-none">
-      {/* Horizontal CD Discs Container */}
+      {/* CD Disc Area */}
       <div
-        ref={scrollContainerRef}
-        className="w-full flex items-center justify-start overflow-x-auto no-scrollbar py-6 px-[50vw] gap-4 snap-x snap-mandatory"
+        ref={cdContainerRef}
+        className="relative flex items-center justify-center py-6"
       >
-        {cdList.map((cd) => {
-          const isActive = cd.id === activeCdId;
-          const isPending = cd.id === pendingCdId && !isActive;
+        {/* Left Arrow Button */}
+        <button
+          type="button"
+          onClick={handlePrev}
+          disabled={!hasPrev}
+          className={`absolute left-0 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-200 ${
+            hasPrev
+              ? 'cursor-pointer active:scale-90'
+              : 'cursor-default opacity-30'
+          }`}
+          style={{
+            background: `linear-gradient(145deg, #e0e0e0 0%, #c0c0c0 40%, #b0b0b0 60%, #d0d0d0 100%)`,
+            boxShadow: `
+              inset 0 1px 0 rgba(255,255,255,0.5),
+              inset 0 -1px 2px rgba(0,0,0,0.15),
+              0 2px 6px rgba(0,0,0,0.25),
+              0 0 0 1px rgba(180,180,180,0.5)
+            `,
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
+        >
+          <ChevronLeft className="w-3.5 h-3.5 text-neutral-700" strokeWidth={2.5} />
+        </button>
 
-          return (
+        {/* Active CD Disc */}
+        <div
+          onClick={onTogglePlay}
+          className="relative flex-shrink-0 cursor-pointer transition-all duration-300 ease-out scale-100 z-10"
+        >
+          <div
+            ref={cdDiscRef}
+            className="relative rounded-full shadow-xl overflow-hidden border border-neutral-200/80 w-52 h-52 sm:w-60 sm:h-60"
+          >
+            {/* Outer Rim Gloss */}
+            <div className="absolute inset-0 rounded-full border-[1.5px] border-neutral-300/60 z-20 pointer-events-none" />
+
+            {/* Base Surface */}
+            <div className="absolute inset-0 rounded-full bg-white transition-colors duration-500" />
+
+            {/* Custom CD Surface Image */}
+            {cd.cdSurfaceImage && (
+              <img
+                src={cd.cdSurfaceImage}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 w-full h-full object-cover rounded-full select-none"
+              />
+            )}
+
+            {/* CD Grooves */}
             <div
-              key={cd.id}
-              ref={(el) => {
-                itemRefs.current[cd.id] = el;
+              className="absolute inset-0 rounded-full pointer-events-none z-10"
+              style={{
+                backgroundImage: `radial-gradient(circle, 
+                  transparent 22%, 
+                  rgba(0,0,0,0.15) 23%, transparent 24%, 
+                  transparent 38%, rgba(0,0,0,0.12) 39%, transparent 40%, 
+                  transparent 58%, rgba(0,0,0,0.12) 59%, transparent 60%, 
+                  transparent 76%, rgba(0,0,0,0.18) 77%, transparent 78%)`,
               }}
-              onClick={() => {
-                if (isActive) {
-                  onTogglePlay();
-                } else {
-                  onSelectCd(cd.id);
-                }
+            />
+
+            {/* Glossy Light Streak Reflection */}
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none z-10"
+              style={{
+                background: `linear-gradient(135deg, 
+                  rgba(255,255,255,0.35) 0%, 
+                  transparent 35%, 
+                  transparent 70%, 
+                  rgba(255,255,255,0.15) 100%)`,
               }}
-              className={`relative flex-shrink-0 cursor-pointer snap-center transition-all duration-300 ease-out ${
-                isActive
-                  ? 'scale-100 z-10'
-                  : isPending
-                  ? 'scale-95 opacity-80'
-                  : 'scale-85 opacity-60 hover:opacity-90 hover:scale-90'
-              }`}
-            >
-              {/* CD Disc Body */}
-              <div
-                ref={isActive ? cdDiscRef : null}
-                className={`relative rounded-full shadow-xl overflow-hidden border border-neutral-200/80 transition-all duration-300 ${
-                  isActive ? 'w-52 h-52 sm:w-60 sm:h-60' : 'w-40 h-40 sm:w-44 sm:h-44'
-                }`}
-                style={isActive ? undefined : { animation: 'none', transform: `rotate(${cdRotationsRef.current[cd.id] || 0}deg)` }}
-              >
-                {/* Outer Rim Gloss */}
-                <div className="absolute inset-0 rounded-full border-[1.5px] border-neutral-300/60 z-20 pointer-events-none" />
+            />
 
-                {/* Base Surface */}
-                <div className="absolute inset-0 rounded-full bg-white transition-colors duration-500" />
+            {/* CD Rainbow Holographic Texture */}
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none z-10"
+              style={{
+                background: `conic-gradient(from 0deg at 50% 50%, 
+                  transparent 0deg,
+                  rgba(255,100,100,0.25) 10deg,
+                  rgba(255,200,50,0.25) 20deg,
+                  rgba(100,255,100,0.25) 30deg,
+                  rgba(50,200,255,0.25) 40deg,
+                  rgba(100,100,255,0.25) 50deg,
+                  rgba(255,100,255,0.25) 60deg,
+                  transparent 70deg,
+                  transparent 220deg,
+                  rgba(255,100,100,0.15) 240deg,
+                  rgba(255,200,50,0.15) 250deg,
+                  rgba(100,255,100,0.15) 260deg,
+                  rgba(50,200,255,0.15) 270deg,
+                  rgba(100,100,255,0.15) 280deg,
+                  rgba(255,100,255,0.15) 290deg,
+                  transparent 300deg,
+                  transparent 360deg)`,
+                WebkitMaskImage: `radial-gradient(circle, transparent 18%, black 22%, black 78%, transparent 82%)`,
+                maskImage: `radial-gradient(circle, transparent 18%, black 22%, black 78%, transparent 82%)`,
+              }}
+            />
 
-                {/* Custom CD Surface Image */}
-                {cd.cdSurfaceImage && (
-                  <img
-                    src={cd.cdSurfaceImage}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    className="absolute inset-0 w-full h-full object-cover rounded-full select-none"
-                  />
-                )}
-
-                {/* CD Grooves - always visible on top */}
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none z-10"
-                  style={{
-                    backgroundImage: `radial-gradient(circle, 
-                      transparent 22%, 
-                      rgba(0,0,0,0.15) 23%, transparent 24%, 
-                      transparent 38%, rgba(0,0,0,0.12) 39%, transparent 40%, 
-                      transparent 58%, rgba(0,0,0,0.12) 59%, transparent 60%, 
-                      transparent 76%, rgba(0,0,0,0.18) 77%, transparent 78%)`,
-                  }}
-                />
-
-                {/* Glossy Light Streak Reflection */}
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none z-10"
-                  style={{
-                    background: `linear-gradient(135deg, 
-                      rgba(255,255,255,0.35) 0%, 
-                      transparent 35%, 
-                      transparent 70%, 
-                      rgba(255,255,255,0.15) 100%)`,
-                  }}
-                />
-
-                {/* CD Rainbow Holographic Texture - fan-shaped streaks from center */}
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none z-10"
-                  style={{
-                    background: `conic-gradient(from 0deg at 50% 50%, 
-                      transparent 0deg,
-                      rgba(255,100,100,0.25) 10deg,
-                      rgba(255,200,50,0.25) 20deg,
-                      rgba(100,255,100,0.25) 30deg,
-                      rgba(50,200,255,0.25) 40deg,
-                      rgba(100,100,255,0.25) 50deg,
-                      rgba(255,100,255,0.25) 60deg,
-                      transparent 70deg,
-                      transparent 220deg,
-                      rgba(255,100,100,0.15) 240deg,
-                      rgba(255,200,50,0.15) 250deg,
-                      rgba(100,255,100,0.15) 260deg,
-                      rgba(50,200,255,0.15) 270deg,
-                      rgba(100,100,255,0.15) 280deg,
-                      rgba(255,100,255,0.15) 290deg,
-                      transparent 300deg,
-                      transparent 360deg)`,
-                    WebkitMaskImage: `radial-gradient(circle, transparent 18%, black 22%, black 78%, transparent 82%)`,
-                    maskImage: `radial-gradient(circle, transparent 18%, black 22%, black 78%, transparent 82%)`,
-                  }}
-                />
-
-                {/* Center Spindle Hole */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                  <div
-                    className={`rounded-full border border-neutral-300/80 bg-white/30 backdrop-blur-[1px] shadow-inner flex items-center justify-center ${
-                      isActive ? 'w-18 h-18 sm:w-22 sm:h-22' : 'w-14 h-14 sm:w-16 sm:h-16'
-                    }`}
-                  >
-                    <div
-                      className={`rounded-full bg-gradient-to-tr from-neutral-300 via-white to-neutral-400 border border-neutral-400/60 shadow-sm flex items-center justify-center ${
-                        isActive ? 'w-10 h-10 sm:w-12 sm:h-12' : 'w-8 h-8'
-                      }`}
-                    >
-                      <div
-                        className={`rounded-full bg-neutral-900 border border-neutral-700 shadow-inner ${
-                          isActive ? 'w-4 h-4 sm:w-5 sm:h-5' : 'w-3 h-3'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* CD Label Text */}
-                <div className="absolute top-6 sm:top-8 left-0 right-0 text-center z-20 pointer-events-none px-[22px]">
-                  <p className="text-[10px] font-semibold tracking-widest text-white uppercase leading-snug whitespace-normal break-words drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-                    {cd.cdText || 'COMPACT DISC'}
-                  </p>
+            {/* Center Spindle Hole */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+              <div className="rounded-full border border-neutral-300/80 bg-white/30 backdrop-blur-[1px] shadow-inner flex items-center justify-center w-18 h-18 sm:w-22 sm:h-22">
+                <div className="rounded-full bg-gradient-to-tr from-neutral-300 via-white to-neutral-400 border border-neutral-400/60 shadow-sm flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12">
+                  <div className="rounded-full bg-neutral-900 border border-neutral-700 shadow-inner w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-
             </div>
-          );
-        })}
-      </div>
 
-      {/* Tonearm - fixed position on screen, does not move when CD switches */}
-      <div
-        className="fixed z-30 pointer-events-none transition-all duration-700 ease-out origin-top-right"
-        style={{
-          top: tonearmPos.top,
-          left: tonearmPos.left,
-          transform: isPlaying ? 'rotate(20deg)' : 'rotate(0deg)',
-        }}
-      >
-        <div className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-neutral-200 to-neutral-400 border border-neutral-300 shadow-md flex items-center justify-center">
-          <div className="w-2.5 h-2.5 rounded-full bg-neutral-600 border border-neutral-200" />
-          <div className="absolute top-5 right-3 w-1 h-28 sm:h-32 bg-gradient-to-r from-neutral-300 via-neutral-100 to-neutral-400 rounded-full shadow-sm origin-top">
-            <div className="absolute -bottom-2 -left-1 w-3 h-4 bg-neutral-800 rounded-sm border border-neutral-600 flex items-center justify-center shadow-md">
-              <div className="w-1 h-1 rounded-full bg-amber-400" />
+            {/* CD Label Text */}
+            <div className="absolute top-6 sm:top-8 left-0 right-0 text-center z-20 pointer-events-none px-[22px]">
+              <p className="text-[10px] font-semibold tracking-widest text-white uppercase leading-snug whitespace-normal break-words drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                {cd.cdText || 'COMPACT DISC'}
+              </p>
             </div>
           </div>
         </div>
+
+        {/* Right Arrow Button */}
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={!hasNext}
+          className={`absolute right-0 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-200 ${
+            hasNext
+              ? 'cursor-pointer active:scale-90'
+              : 'cursor-default opacity-30'
+          }`}
+          style={{
+            background: `linear-gradient(145deg, #e0e0e0 0%, #c0c0c0 40%, #b0b0b0 60%, #d0d0d0 100%)`,
+            boxShadow: `
+              inset 0 1px 0 rgba(255,255,255,0.5),
+              inset 0 -1px 2px rgba(0,0,0,0.15),
+              0 2px 6px rgba(0,0,0,0.25),
+              0 0 0 1px rgba(180,180,180,0.5)
+            `,
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
+        >
+          <ChevronRight className="w-3.5 h-3.5 text-neutral-700" strokeWidth={2.5} />
+        </button>
       </div>
     </div>
   );
